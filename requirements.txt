@@ -1,0 +1,9 @@
+streamlit
+opencv-python-headless
+mediapipe
+gspread
+oauth2client
+pandas
+numpy
+Pillow
+gTTS
