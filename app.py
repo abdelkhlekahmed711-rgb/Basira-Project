@@ -9,7 +9,7 @@ from PIL import Image
 import math
 import time
 
-# --- 1. إعدادات الهوية (Favicon) لتجنب خطأ الشعار ---
+# --- 1. إعدادات الهوية (Favicon) لتجنب خطأ الملف المفقود ---
 LOGO_URL = "https://i.postimg.cc/R0cQyjrR/logo-png.png" 
 
 st.set_page_config(
@@ -18,8 +18,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. تهيئة الذاكرة فوراً (حل خطأ AttributeError) ---
-# يجب أن يكون هذا الجزء في بداية الكود تماماً لضمان وجود المتغيرات
+# --- 2. حل مشكلة AttributeError (تعريف الذاكرة في البداية تماماً) ---
+# وضعنا هذا الجزء هنا لضمان وجود المتغيرات قبل أي عملية فحص
 keys = {
     'auth': {'in': False, 'user': None, 'role': None},
     'stab_count': 0,
@@ -32,20 +32,22 @@ for key, val in keys.items():
     if key not in st.session_state:
         st.session_state[key] = val
 
-# --- 3. محركات النظام مع معالجة الأخطاء ---
+# --- 3. محركات النظام (مع معالجة أخطاء التهيئة) ---
 @st.cache_resource
 def init_system():
     try:
+        # الربط مع Google Sheets
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
         client = gspread.authorize(creds)
         db = client.open("Basira_DB")
         
+        # محرك MediaPipe
         mp_hands = mp.solutions.hands
         engine = mp_hands.Hands(max_num_hands=1, model_complexity=1, min_detection_confidence=0.7)
         return db.worksheet("Signs_DB"), db.worksheet("Users_Admin"), engine, mp.solutions.drawing_utils
     except Exception as e:
-        st.error(f"⚠️ خطأ في التهيئة: {e}")
+        st.error(f"⚠️ خطأ في تهيئة النظام: {e}")
         st.stop()
 
 signs_sheet, auth_sheet, hands_engine, mp_draw = init_system()
@@ -62,6 +64,7 @@ def apply_ui():
     </style>
     """, unsafe_allow_html=True)
 
+    # جافا سكريبت للتتبع التلقائي
     st.components.v1.html("""
     <script>
     window.parent.updateZoom = function(x, y, active) {
@@ -76,7 +79,7 @@ def apply_ui():
     </script>
     """, height=0)
 
-# --- 5. المحرك الرياضي ---
+# --- 5. المحرك الرياضي ومنطق المطابقة ---
 def get_finger_math(hl):
     lm = hl.landmark
     palm = math.sqrt((lm[0].x-lm[9].x)**2 + (lm[0].y-lm[9].y)**2 + (lm[0].z-lm[9].z)**2)
@@ -109,14 +112,12 @@ if not st.session_state.auth['in']:
             st.rerun()
         else: st.error("بيانات الدخول غير صحيحة")
 else:
-    # القائمة الجانبية (Sidebar) - نستخدم الرابط لتجنب خطأ الملف المفقود
+    # القائمة الجانبية (نستخدم الرابط URL بدلاً من logo.png لتجنب الخطأ)
     st.sidebar.image(LOGO_URL, use_container_width=True)
     st.sidebar.success(f"👤 مرحباً: {st.session_state.auth['user']}")
-    
     if st.sidebar.button("تسجيل الخروج"):
         st.session_state.auth['in'] = False; st.rerun()
 
-    # واجهة المستخدم (المترجم الفوري)
     st.header("📸 المترجم الذكي (بصيرة)")
     signs_df = pd.DataFrame(signs_sheet.get_all_records())
     run = st.toggle("تفعيل الكاميرا والترجمة")
@@ -135,9 +136,10 @@ else:
             mp_draw.draw_landmarks(rgb, hl, mp.solutions.hands.HAND_CONNECTIONS)
             st.components.v1.html(f"<script>window.parent.updateZoom({hl.landmark[9].x}, {hl.landmark[9].y}, true);</script>", height=0)
             
-            current_sign = match_sign(get_finger_math(hl), signs_df)
+            live_vec = get_finger_math(hl)
+            current_sign = match_sign(live_vec, signs_df)
             
-            if current_sign == st.session_state.last_s:
+            if current_sign and current_sign == st.session_state.last_s:
                 st.session_state.stab_count += 1
             else:
                 st.session_state.stab_count = 0
@@ -145,7 +147,7 @@ else:
 
             if st.session_state.stab_count >= 10:
                 st.session_state.final_s = current_sign
-                st.subheader(f"✨ الترجمة المؤكدة: {current_sign}")
+                st.title(f"✨ الترجمة المؤكدة: {current_sign}")
         else:
             st.components.v1.html("<script>window.parent.updateZoom(0,0,false);</script>", height=0)
             if time.time() - st.session_state.last_time > 2.0:
