@@ -6,3 +6,5 @@ oauth2client
 pandas
 numpy
 Pillow
+streamlit-webrtc
+av
