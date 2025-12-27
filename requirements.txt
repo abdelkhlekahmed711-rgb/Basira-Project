@@ -1,9 +1,8 @@
 streamlit
+mediapipe==0.10.11
 opencv-python-headless
-mediapipe
 gspread
 oauth2client
 pandas
 numpy
 Pillow
-gTTS
